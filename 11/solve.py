@@ -134,8 +134,8 @@ class Schedule:
         # The good thing is that wl mod k*self.modulus is bouned to k * modulus
         # and therefore does not explode like wl does.
         # Therefore, instead of passing wl to the next monkey, we can pass
-        # (wl mod k*self.modulus) mod self.modulus and the problem of exploding
-        # numbers goes away.
+        # (wl mod k*self.modulus) and the problem of exploding numbers goes
+        # away.
         # How do we choose k? The problem here is that each monkey has a
         # different modulus and therefore we need to choose a k such that
         # k * self.modulus is a multiple of other.modulus.
