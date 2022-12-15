@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 
+# Smarter solution that uses DFS instead of running the simulation for each unit
+# of sand.
+
 import sys
 from enum import Enum
+import copy
 
 # A position (x, y) in the 2D grid.
 class Position:
@@ -12,68 +16,61 @@ class Position:
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y
 
+    def __hash__(self):
+        return hash((self.x, self.y))
+
     def __repr__(self):
         return str((self.x, self.y))
 
 class Grid:
-    # The type of a cell in the grid.
-    class Type(Enum):
-        Air = 1
-        Rock = 2
-        Sand = 3
-
     # Create an empty grid. If `part1` is False then this grid has a floor
     # otherwise it is floating above the abyss.
     def __init__(self):
-        self.grid = [[Grid.Type.Air]]
+        # Keep track of the coordinates of all rock tiles.
+        self.rocks = set()
+        # The position where the sand is dropped from.
         self.sandSourcePos = Position(500, 0)
         # When true, all positions with coordinate y == self.floorY are
         # considered to be rock.
         self.hasFloor = False
         # The y coordinate of the floor.
         self.floorY = 0
+        # Keep track of the minimum and the maximum x and y coordinates. This
+        # essentially store the two corner of the smallest square that can hold
+        # all the rocks. This is used to compute the positions that are
+        # considered out of bounds and by extension which positions are
+        # considered in the abyss.
+        self.min = copy.copy(self.sandSourcePos)
+        self.max = copy.copy(self.sandSourcePos)
 
-    # Get the width of the grid.
-    def width(self):
-        return len(self.grid[0]) if len(self.grid) > 0 else 0
+    # Check if a given position is rock or not.
+    def isRock(self, pos):
+        return (self.hasFloor and pos.y == self.floorY) or pos in self.rocks
 
-    # Get the height of the grid.
-    def height(self):
-        return len(self.grid)
-
-    # Set the grid value at pos to be of type t. Automatically grows the grid if
-    # needed.
-    def set(self, pos, t):
-        # Make sure the grid is big enough to insert the point, add air cells
-        # if this is not the case
-        if self.width() <= pos.x:
-            W = self.width()
-            for row in self.grid:
-                row += [Grid.Type.Air for i in range(pos.x - W + 1)]
-        if self.height() <= pos.y:
-            H = self.height()
-            self.grid += [[Grid.Type.Air for i in range(self.width())] for j in range(pos.y - H + 1)]
-
-        # Sanity check that the logic above is working as intended.
-        assert pos.x < self.width() and pos.y < self.height()
-
-        # Set the cell to the given type.
-        self.grid[pos.y][pos.x] = t
-
-    # Return the type of the tile at position `pos` in the grid.
-    def get(self, pos):
-        if pos.x < self.width() and pos.y < self.height():
-            return self.grid[pos.y][pos.x]
-        elif self.hasFloor and pos.y == self.floorY:
-            return Grid.Type.Rock
-        else:
-            return Grid.Type.Air
+    # Return true if the position `pos` is outside the boundaries, such tiles
+    # will always fall into the abyss.
+    # If the grid has a floor then no tile can be out of bounds.
+    def outOfBounds(self, pos):
+        return not self.hasFloor and \
+               not (self.min.x <= pos.x <= self.max.x and \
+                    self.min.y <= pos.y <= self.max.y)
 
     # Add a path of rock to the grid. vertices is a list of Positions containing
     # the coordinates of each point in the path.
     def addPath(self, vertices):
-        # Add a line of rock starting at start and ending at end.
-        # startPos and endPos must describe a straight line.
+        # Add a rock at position `pos`.
+        def addRock(pos):
+            # Make sure the grid is big enough to insert the point, add air cells
+            # if this is not the case
+            self.rocks.add(pos)
+            self.min.x = min(self.min.x, pos.x)
+            self.min.y = min(self.min.y, pos.y)
+            self.max.x = max(self.max.x, pos.x)
+            self.max.y = max(self.max.y, pos.y)
+            self.floorY = self.max.y + 2
+
+        # Add a line of rock starting at start and ending at end. startPos and
+        # endPos must describe a straight line.
         def addLine(start, end):
             # Sanity check that this is indeed a straight line.
             assert start.x == end.x or start.y == end.y
@@ -86,77 +83,71 @@ class Grid:
             # of 1, hence a line.
             for y in range(min(start.y, end.y), max(start.y, end.y) + 1):
                 for x in range(min(start.x, end.x), max(start.x, end.x) + 1):
-                    self.set(Position(x, y), Grid.Type.Rock)
+                    addRock(Position(x, y))
 
         for i in range(1, len(vertices)):
             addLine(vertices[i-1], vertices[i])
 
-        # Update the floor's y position to be 2 lower than the lowest line.
-        rockPosY = [y for x in range(self.width()) \
-            for y in range(self.height()) if self.grid[y][x] == Grid.Type.Rock]
-        self.floorY = max(rockPosY) + 2
-
-    # Drop a unit of sand and run the simulation until either that unit of sand
-    # comes to rest of falls into the abyss.  Return True if the sand fell into
-    # the abyss, False otherwise.
-    def dropSand(self):
-        # Check if a position is in the abyss, e.g. outside the grid
-        # boundaries. Such a position will never go back to the grid.
-        # In part2 this always return False.
-        def inAbyss(pos):
-            return not self.hasFloor and \
-                   (pos.x < 0 or self.width() <= pos.x or \
-                   pos.y < 0 or self.height() <= pos.y)
-
-        # Check if a position in the grid is free, e.g. not blocked by sand or
-        # Rock. A position in the abyss is always free.
-        def isFree(pos):
-            # The inAbyss check also acts as a bound check for the right
-            # side of the condition.
-            return (inAbyss(pos) or self.get(pos) == Grid.Type.Air)
-
-        # For a given position of a unit of sand, compute the next positition at
-        # the next step of the simulation.
-        def nextPos(pos):
-            # Apply the rules as described in the problem statement.
-            down = Position(pos.x, pos.y + 1)
-            leftDown = Position(pos.x - 1, pos.y + 1)
-            rightDown = Position(pos.x + 1, pos.y + 1)
-            if isFree(down):
-                # Case #1: The tile immediately below the unit of sand is not
-                # blocked. The sand falls straight down.
-                return down
-            elif isFree(leftDown):
-                # Case #2: The tile under the sand is blocked. The tile on the
-                # left diagonal is free.
-                return leftDown
-            elif isFree(rightDown):
-                # Case #2: The tile under the sand is blocked. The tile on the
-                # left diagonal is blocked but the tile on the right diagonal is
-                # free.
-                return rightDown
-            else:
-                # All positions are blocked, this unit of sand comes to rest at
-                # its current position.
-                return pos
-
-        curr = self.sandSourcePos
-        next = nextPos(curr)
-        while not inAbyss(curr) and next != curr:
-            curr = next
-            next = nextPos(curr)
-        if not inAbyss(curr):
-            # The sand got into a resting position, update the grid.
-            self.set(curr, Grid.Type.Sand)
-        return inAbyss(curr)
+    # Run DFS until a termination condition is reached. Return the number of
+    # units of sand that reached a resting state before hitting the termination
+    # condition. terminationFunc is a function taking a position as its sole
+    # argument and returns True if the position satisfies the termination
+    # condition, False otherwise.
+    def dfs(self, terminationFunc):
+        # Visited set and stack to implement DFS. Start with the position of the
+        # source of sand.
+        visited = set()
+        visited.add(self.sandSourcePos)
+        stack = [self.sandSourcePos]
+        # Keep track of how we reached a particular tile using DFS, e.g. which
+        # tile was being processed when the current tile had been pushed onto
+        # the stack. With this dict we can trace back the path from the
+        # termination tile to the sand source.
+        parent = {}
+        # The result of the function to be returned. This holds the number of
+        # tiles that where processed by the loop below, counting the tile that
+        # triggered the termination condition.
+        res = 0
+        while len(stack) > 0:
+            res += 1
+            tile = stack.pop(0)
+            assert tile in visited
+            if terminationFunc(tile):
+                # We reached the termination, this can only happen in part 1.
+                # The problem at this point is that `res` is also counting the
+                # tiles we iterated over to find the first tile falling into the
+                # abyss. By definition, those tiles are not indicating resting
+                # sand and should not be counted. Therefore we need to subtract
+                # the lenght of the path from the source of sand to the current
+                # tile.
+                curr = tile
+                pathLen = 0
+                while curr != self.sandSourcePos:
+                    pathLen += 1
+                    curr = parent[curr]
+                return res - pathLen - 1
+            # Insert the next tile to visit in the stack, the order matters
+            # here, we want to visit `down`, `leftDown` and `rightDown` in that
+            # order and therefore those must be pushed into the opposite order
+            # onto the stack.
+            down = Position(tile.x, tile.y + 1)
+            leftDown = Position(tile.x - 1, tile.y + 1)
+            rightDown = Position(tile.x + 1, tile.y + 1)
+            for p in [rightDown, leftDown, down]:
+                if not self.isRock(p) and p not in visited:
+                    # Record from which tile `p` was reached.
+                    parent[p] = tile
+                    visited.add(p)
+                    stack.insert(0, p)
+        # No tile hit the termination condition. This is the case when running
+        # part 2.
+        return res
 
     # Run the simulation of sand falling from the sand source. Assume that there
     # is no floor, and return the number of units of sand coming to rest before
     # the sand starts falling into the abyss.
     def runPart1(self):
-        numDrops = 0
-        while not self.dropSand():
-            numDrops += 1
+        numDrops = self.dfs(self.outOfBounds)
         return numDrops
 
     # Run the simulation of sand falling from the sand source. Assume that
@@ -164,27 +155,9 @@ class Grid:
     # before the source gets blocked.
     def runPart2(self):
         self.hasFloor = True
-        numDrops = 0
-        while self.get(self.sandSourcePos) == Grid.Type.Air:
-            self.dropSand()
-            numDrops += 1
+        numDrops = self.dfs(lambda _: False)
         self.hasFloor = False
         return numDrops
-
-    def __str__(self):
-        res = ""
-        for y in range(self.height()):
-            for x in range(494,self.width()):
-                s = "."
-                if self.grid[y][x] == Grid.Type.Rock:
-                    s = "#"
-                elif self.grid[y][x] == Grid.Type.Sand:
-                    s = "o"
-
-                res += s
-            res += "\n"
-        return res
-
 
 # Parse the input file and returns a Grid.
 def parseInput(inputFile):
