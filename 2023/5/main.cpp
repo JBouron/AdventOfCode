@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <stdint.h>
 #include <assert.h>
+#include "set.hpp"
 
 using u8 = uint8_t;
 using u16 = uint16_t;
@@ -94,6 +95,24 @@ public:
         return sourceValue;
     }
 
+    Set<u64> map(Set<u64> const& set) const {
+        Set<u64> res;
+        res.add(set);
+
+        for (MappingEntry const& e : m_entries) {
+            Set<u64>::Interval const srcInt(e.sourceStart, e.length);
+            res.remove(srcInt);
+        }
+        for (MappingEntry const& e : m_entries) {
+            Set<u64>::Interval const srcInt(e.sourceStart, e.length);
+            Set<u64> inter(set.intersection(srcInt));
+            u64 const shiftVal(e.destinationStart - e.sourceStart);
+            inter.shift(shiftVal);
+            res.add(inter);
+        }
+        return res;
+    }
+
     u64 size() const {
         return m_entries.size();
     }
@@ -163,41 +182,21 @@ static void run(std::vector<std::string> const& lines) {
     std::cout << "Part 1: " << part1 << std::endl;
 
     // Part 2.
-    // FIXME: This is an un-optimized version. The _right_ way to do this would
-    // be to map whole ranges at a time instead of individual seed values. I'll
-    // come back to this and re-write it the proper way later ... or not ...
     u64 part2(~0ULL);
     assert(!(seeds.size() % 2));
-    u64 totalSeeds(0);
-    for (u64 i(0); i < seeds.size(); i += 2) {
-        u64 const rangeLen(seeds[i+1]);
-        totalSeeds += rangeLen;
-    }
-    std::cout << totalSeeds << " to process" << std::endl;
-    u64 processed(0);
     for (u64 i(0); i < seeds.size(); i += 2) {
         u64 const rangeStart(seeds[i]);
         u64 const rangeLen(seeds[i+1]);
-        for (u64 j(rangeStart); j < rangeStart + rangeLen; ++j) {
-            u64 const loc(
-                    humToLoc.map(
-                        tempToHum.map(
-                            lightToTemp.map(
-                                waterToLight.map(
-                                    fertToWater.map(
-                                        soilToFert.map(
-                                            seedToSoil.map(j))))))));
-            part2 = std::min(part2, loc);
-            processed++;
-            if (processed % 1000000 == 0) {
-                std::cout << "\33[2K\r" << processed << " / " << totalSeeds <<
-                    " processed (" << (100.f * (float)processed) / totalSeeds <<
-                    "%)";
-                std::flush(std::cout);
-            }
-        }
+        Set<u64> seedSet(Set<u64>::Interval(rangeStart, rangeLen));
+        seedSet = seedToSoil.map(seedSet);
+        seedSet = soilToFert.map(seedSet);
+        seedSet = fertToWater.map(seedSet);
+        seedSet = waterToLight.map(seedSet);
+        seedSet = lightToTemp.map(seedSet);
+        seedSet = tempToHum.map(seedSet);
+        seedSet = humToLoc.map(seedSet);
+        part2 = std::min(part2, seedSet.min());
     }
-    std::cout << std::endl;
     std::cout << "Part 2: " << part2 << std::endl;
 }
 
@@ -218,6 +217,27 @@ int main(int const argc, char ** const argv) {
             lines.push_back(line);
         }
         run(lines);
+        //Set<u64> s;
+        //s.add(Set<u64>::Interval(10, 10));
+        //std::cout << s.toString() << std::endl;
+        //s.add(Set<u64>::Interval(20, 10));
+        //std::cout << s.toString() << std::endl;
+        //s.add(Set<u64>::Interval(0, 10));
+        //std::cout << s.toString() << std::endl;
+
+        //std::cout << "---" << std::endl;
+
+        //s.remove(Set<u64>::Interval(10, 10));
+        //std::cout << s.toString() << std::endl;
+        //s.remove(Set<u64>::Interval(19, 2));
+        //std::cout << s.toString() << std::endl;
+        //s.remove(Set<u64>::Interval(9, 1));
+        //std::cout << s.toString() << std::endl;
+        //s.remove(Set<u64>::Interval(20, 11));
+        //std::cout << s.toString() << std::endl;
+        //s.remove(Set<u64>::Interval(0, 10));
+        //std::cout << s.toString() << std::endl;
+
     }
     return 0;
 }
