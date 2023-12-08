@@ -1,7 +1,14 @@
 // Utility functions and types used by many of the solutions.
 
 #include <vector>
+#include <iterator>
+#include <map>
+#include <set>
+#include <iostream>
+#include <fstream>
+#include <algorithm>
 #include <stdint.h>
+#include <assert.h>
 
 using u8  = uint8_t;
 using u16 = uint16_t;
@@ -81,6 +88,41 @@ std::vector<std::string> split(std::string_view const& line,
         }
         pos = nextOcc + splitOn.size();
     }
+    return res;
+}
+
+// Create a new string from a source string, replacing all occurences of `from`
+// to `to`.
+std::string replace(std::string_view const& line,
+                    char const from,
+                    char const to) {
+    std::string res;
+    for (u64 i(0); i < line.size(); ++i) {
+        char const ch(line[i]);
+        res += ch == from ? to : ch;
+    }
+    return res;
+}
+
+// Create a std::map mapping the values found in the range [first; last) with
+// the number of times they appear in this range.
+template<typename It>
+std::map<typename std::iterator_traits<It>::value_type, u64>
+occurences(It first, It last) {
+    std::map<typename std::iterator_traits<It>::value_type, u64> occ;
+    for (It it(first); it != last; ++it) {
+        occ[*it] += 1;
+    }
+    return occ;
+}
+
+// Get the set of values contained in a std::map<K,V>.
+template<typename K, typename V>
+std::set<V> values(std::map<K, V> const& map) {
+    std::set<V> res;
+    std::for_each(map.cbegin(), map.cend(), [&](auto const& p) {
+        res.insert(p.second);
+    });
     return res;
 }
 }
