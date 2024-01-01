@@ -194,6 +194,38 @@ std::ostream& operator<<(std::ostream& stream, Pos2d const& pos) {
     return stream;
 }
 
+// Operator to print a std::set<T> into std::cout / std::cerr.
+template<typename T>
+std::ostream& operator<<(std::ostream& stream, std::set<T> const& set) {
+    stream << "{";
+    bool isFirst(true);
+    for (T const& e : set) {
+        if (!isFirst) {
+            stream << " ";
+        }
+        isFirst = false;
+        stream << e;
+    }
+    stream << "}";
+    return stream;
+}
+
+// Operator to print a std::vector<T> into std::cout / std::cerr.
+template<typename T>
+std::ostream& operator<<(std::ostream& stream, std::vector<T> const& vec) {
+    stream << "[";
+    bool isFirst(true);
+    for (T const& e : vec) {
+        if (!isFirst) {
+            stream << " ";
+        }
+        isFirst = false;
+        stream << e;
+    }
+    stream << "]";
+    return stream;
+}
+
 // A 2D grid of values of type T. A Grid<T> is always rectangular and holds the
 // values of _all_ the cells/positions that falls within the Grid (ie. it is not
 // a sparse collection).
